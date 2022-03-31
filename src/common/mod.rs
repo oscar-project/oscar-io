@@ -1,2 +1,3 @@
+//! Common types used in multiple (if not all) different OSCAR Corpus versions.
 mod common_types;
-pub(crate) use common_types::Identification;
+pub use common_types::Identification;

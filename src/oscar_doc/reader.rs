@@ -1,6 +1,6 @@
 /*! OSCAR Schema v2 (22.01) Reader.
 
-   Provides a way to read [Document] from a [BufRead].
+   Provides a way to read [Document]s from a [BufRead].
 
    TODO: Find a way to provide some reading of splitted corpora.
 * !*/
@@ -11,13 +11,14 @@ use crate::error::Error;
 use super::types::Document;
 
 /// Document reader.
-/// The inner type has to implement [BufRead]
-struct DocReader<R: BufRead> {
+/// The inner type has to implement [BufRead].
+pub struct DocReader<R: BufRead> {
     r: R,
 }
 
 impl<R: BufRead> DocReader<R> {
-    fn new(r: R) -> Self {
+    /// Create a new [DocReader].
+    pub fn new(r: R) -> Self {
         DocReader { r }
     }
 }

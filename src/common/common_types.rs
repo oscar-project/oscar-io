@@ -5,9 +5,11 @@ use std::str::FromStr;
 
 use schemars::JsonSchema;
 
-use crate::{error::Error, lang::Lang};
+use crate::lang::Lang;
 use serde::{Deserialize, Serialize};
 
+/// Language identification.
+/// Holds the language itself with [Lang] and a probability/confidence between `0` and `1`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, JsonSchema)]
 #[serde(from = "IdentificationSer", into = "IdentificationSer")]
 pub struct Identification {
@@ -56,5 +58,14 @@ impl Identification {
 #[cfg(test)]
 mod tests {
 
+    use crate::lang::Lang;
+
     use super::Identification;
+
+    #[test]
+    fn test_simple_identification() {
+        let id = Identification::new(Lang::En, 1.0);
+        assert_eq!(id.label(), &Lang::En);
+        assert_eq!(id.prob(), &1.0);
+    }
 }

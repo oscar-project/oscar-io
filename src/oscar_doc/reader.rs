@@ -4,13 +4,14 @@
 
    TODO: Find a way to provide some reading of splitted corpora.
 * !*/
+//#[cfg(feature = "avro")]
+use avro_rs::Reader;
+use flate2::bufread::MultiGzDecoder;
 use std::{
     fs::File,
-    io::{BufRead, BufReader},
+    io::{BufRead, BufReader, Read},
     path::PathBuf,
 };
-
-use flate2::bufread::MultiGzDecoder;
 
 use crate::error::Error;
 
@@ -37,6 +38,10 @@ impl<R: BufRead> DocReader<BufReader<MultiGzDecoder<R>>> {
     }
 }
 
+// impl<R: BufRead> DocReader<BufReader<Reader<R>>> {
+//     pub fn from_avro_reader(r: R) {}
+// }
+
 impl<R: BufRead> Iterator for DocReader<R> {
     type Item = Result<Document, Error>;
 
@@ -54,6 +59,34 @@ impl<R: BufRead> Iterator for DocReader<R> {
                 Some(result)
             }
             Err(e) => Some(Err(e.into())),
+        }
+    }
+}
+
+pub struct AvroDocReader<'a, R> {
+    r: Reader<'a, R>,
+}
+
+impl<'a, R: Read> AvroDocReader<'a, R> {
+    pub fn new(r: R) -> Self {
+        let r = Reader::new(r).unwrap();
+        Self { r }
+    }
+}
+
+impl<'a, R: Read> Iterator for AvroDocReader<'a, R> {
+    type Item = Result<Document, Error>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.r.next() {
+            // if we properly get a record, try to get document form it.
+            // Otherwise, return error.
+            Some(Ok(value)) => match avro_rs::from_value(&value) {
+                Ok(d) => Some(Ok(d)),
+                Err(e) => Some(Err(e.into())),
+            },
+            Some(Err(e)) => Some(Err(e.into())),
+            None => None,
         }
     }
 }
@@ -151,7 +184,7 @@ mod tests {
         let content = r#"{"foo": "bar"}"#;
         let mut r = DocReader::new(content.as_bytes());
         match r.next() {
-            Some(Err(Error::Serde(_))) => assert!(true),
+            Some(Err(Error::SerdeJson(_))) => assert!(true),
             x => panic!("wrong return: {:?}", x),
         }
     }

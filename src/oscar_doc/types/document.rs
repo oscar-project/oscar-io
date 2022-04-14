@@ -46,7 +46,7 @@ impl Document {
     }
 
     /// Get a reference to the document's metadata.
-    pub(crate) fn metadata(&self) -> &Metadata {
+    pub fn metadata(&self) -> &Metadata {
         &self.metadata
     }
 

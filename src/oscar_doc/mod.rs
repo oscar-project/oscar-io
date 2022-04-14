@@ -5,6 +5,7 @@ mod reader;
 mod types;
 mod writer;
 
+pub use reader::AvroDocReader as AvroReader;
 pub use reader::DocReader as Reader;
 pub use types::Document;
 pub use types::Metadata;

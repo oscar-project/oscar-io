@@ -4,7 +4,7 @@
 
    TODO: Find a way to provide some reading of splitted corpora.
 * !*/
-//#[cfg(feature = "avro")]
+#[cfg(feature = "avro")]
 use avro_rs::Reader;
 use flate2::bufread::MultiGzDecoder;
 use std::{
@@ -13,7 +13,7 @@ use std::{
     path::PathBuf,
 };
 
-use crate::error::Error;
+use crate::error::{self, Error};
 
 use super::types::Document;
 
@@ -38,10 +38,6 @@ impl<R: BufRead> DocReader<BufReader<MultiGzDecoder<R>>> {
     }
 }
 
-// impl<R: BufRead> DocReader<BufReader<Reader<R>>> {
-//     pub fn from_avro_reader(r: R) {}
-// }
-
 impl<R: BufRead> Iterator for DocReader<R> {
     type Item = Result<Document, Error>;
 
@@ -63,10 +59,12 @@ impl<R: BufRead> Iterator for DocReader<R> {
     }
 }
 
+#[cfg(feature = "avro")]
 pub struct AvroDocReader<'a, R> {
     r: Reader<'a, R>,
 }
 
+#[cfg(feature = "avro")]
 impl<'a, R: Read> AvroDocReader<'a, R> {
     pub fn new(r: R) -> Self {
         let r = Reader::new(r).unwrap();
@@ -74,6 +72,7 @@ impl<'a, R: Read> AvroDocReader<'a, R> {
     }
 }
 
+#[cfg(feature = "avro")]
 impl<'a, R: Read> Iterator for AvroDocReader<'a, R> {
     type Item = Result<Document, Error>;
 
@@ -92,7 +91,7 @@ impl<'a, R: Read> Iterator for AvroDocReader<'a, R> {
 }
 
 /// In the case where we have multiple splits for a given subcorpus.
-struct SplitFileIter {
+pub struct SplitFileIter {
     //path to the directory
     //file names
     //counter
@@ -100,31 +99,30 @@ struct SplitFileIter {
     file_name_start: String,
     file_name_end: String,
     file_name_extension: String,
+    counter_start: usize,
     counter: usize,
+    current_file: Option<DocReader<BufReader<File>>>,
 }
 impl SplitFileIter {
-    fn new(
+    pub fn new(
         base_path: PathBuf,
-        file_name_start: String,
-        file_name_end: String,
-        file_name_extension: String,
+        file_name_start: &str,
+        file_name_end: &str,
+        file_name_extension: &str,
         counter_start: usize,
     ) -> SplitFileIter {
         SplitFileIter {
             base_path,
-            file_name_start,
-            file_name_end,
-            file_name_extension,
+            file_name_start: file_name_start.to_string(),
+            file_name_end: file_name_end.to_string(),
+            file_name_extension: file_name_extension.to_string(),
+            counter_start,
             counter: counter_start,
+            current_file: None,
         }
     }
-}
 
-// TODO: Check with gzipped
-impl Iterator for SplitFileIter {
-    type Item = Result<BufReader<File>, Error>;
-
-    fn next(&mut self) -> Option<Self::Item> {
+    pub fn rotate_file(&mut self) -> Result<(), Error> {
         let filename = self.file_name_start.to_owned()
             + &self.counter.to_string()
             + &self.file_name_end
@@ -133,21 +131,106 @@ impl Iterator for SplitFileIter {
         let mut full_path = self.base_path.clone();
         full_path.push(filename);
 
+        println!("{full_path:?}");
         match File::open(full_path) {
             // everything is ok, we return a bufreader
             Ok(f) => {
                 let br = BufReader::new(f);
+                let dr = DocReader::new(br);
                 self.counter += 1;
-                Some(Ok(br))
+                self.current_file = Some(dr);
+                Ok(())
+                // Some(Ok(br))
             }
 
             // if the error is a NotFound, then we just arrived at the end
             // if not, there has been a problem.
-            Err(e) => match e.kind() {
-                std::io::ErrorKind::NotFound => None,
-                _ => Some(Err(e.into())),
-            },
+            // Err(e) => match e.kind() {
+            //     std::io::ErrorKind::NotFound => None,
+            //     _ => Some(Err(e.into())),
+            // },
+            Err(e) => Err(e.into()),
         }
+    }
+}
+
+// TODO: Check with gzipped
+impl Iterator for SplitFileIter {
+    // type Item = Result<BufReader<File>, Error>;
+    type Item = Result<Document, Error>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // check if current file is None or not
+        match &mut self.current_file {
+            None => {
+                //if it is, try to rotate. If not found is returned, return None
+                match self.rotate_file() {
+                    // re-call next now that rotate file is not None
+                    // TODO: remove potential infinite recursion
+                    Ok(()) => self.next(),
+
+                    // if rotating went wrong, check if it's because of not found (end of spit files) or other error
+                    Err(e) => match e {
+                        Error::Io(ioerror) => {
+                            // Correct end of split files if not found AND counter has been incremented at least one time
+                            if ioerror.kind() == std::io::ErrorKind::NotFound
+                                && self.counter > self.counter_start
+                            {
+                                None
+
+                            // Return the error for other cases
+                            } else {
+                                Some(Err(ioerror.into()))
+                            }
+                        }
+
+                        // return the error for non io errors
+                        other => Some(Err(other)),
+                    },
+                }
+            }
+
+            // if there is an already opened file
+            Some(file) => file.next(),
+        }
+        // if current file is none, try to get next
+        // if self.current_file.is_none() {
+        //     self.rotate_file()?;
+        // }
+
+        // // should either have failed previously or be some()
+        // if self.current_file.is_some() {
+        //     match self.current_file.next() {
+        //         Some(doc) => Some(doc),
+        //         None => {
+        //             //if none here, try to get next file
+        //         }
+        //     }
+        // }
+        // let filename = self.file_name_start.to_owned()
+        //     + &self.counter.to_string()
+        //     + &self.file_name_end
+        //     + &self.file_name_extension;
+
+        // let mut full_path = self.base_path.clone();
+        // full_path.push(filename);
+
+        // println!("{full_path:?}");
+        // match File::open(full_path) {
+        //     // everything is ok, we return a bufreader
+        //     Ok(f) => {
+        //         let br = BufReader::new(f);
+        //         self.counter += 1;
+        //         Some(Ok(br))
+        //     }
+
+        //     // if the error is a NotFound, then we just arrived at the end
+        //     // if not, there has been a problem.
+        //     Err(e) => match e.kind() {
+        //         std::io::ErrorKind::NotFound => None,
+        //         _ => Some(Err(e.into())),
+        //     },
+        // }
     }
 }
 

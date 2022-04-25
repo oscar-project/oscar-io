@@ -5,8 +5,10 @@ mod reader;
 mod types;
 mod writer;
 
+#[cfg(feature = "avro")]
 pub use reader::AvroDocReader as AvroReader;
 pub use reader::DocReader as Reader;
+pub use reader::SplitFileIter as SplitReader;
 pub use types::Document;
 pub use types::Metadata;
 pub use types::WarcHeaders;

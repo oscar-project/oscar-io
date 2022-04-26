@@ -1,0 +1,16 @@
+[package]
+name = "oscar-io"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+flate2 = "1.0"
+log = "0.4.16"
+schemars = "0.8.8"
+serde = "1.0.136"
+serde_json = "1.0.79"
+warc = "0.3.1"
+avro-rs = { version = "0.13.0", features = ["snappy"]}
+

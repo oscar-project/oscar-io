@@ -1,6 +1,4 @@
-/*! Identifier trait
-All identifiers should implement [Identifier] to be useable in processing and pipelines.
-!*/
+/*! Common types (identification, for now) !*/
 use std::str::FromStr;
 
 use schemars::JsonSchema;

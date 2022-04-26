@@ -9,7 +9,7 @@ use avro_rs::Reader;
 use flate2::bufread::MultiGzDecoder;
 use std::{
     fs::File,
-    io::{BufRead, BufReader, Read},
+    io::{BufRead, BufReader},
     path::PathBuf,
 };
 
@@ -127,11 +127,9 @@ impl SplitFileIter {
             + &self.counter.to_string()
             + &self.file_name_end
             + &self.file_name_extension;
-
         let mut full_path = self.base_path.clone();
         full_path.push(filename);
 
-        println!("{full_path:?}");
         match File::open(full_path) {
             // everything is ok, we return a bufreader
             Ok(f) => {
@@ -140,15 +138,10 @@ impl SplitFileIter {
                 self.counter += 1;
                 self.current_file = Some(dr);
                 Ok(())
-                // Some(Ok(br))
             }
 
             // if the error is a NotFound, then we just arrived at the end
             // if not, there has been a problem.
-            // Err(e) => match e.kind() {
-            //     std::io::ErrorKind::NotFound => None,
-            //     _ => Some(Err(e.into())),
-            // },
             Err(e) => Err(e.into()),
         }
     }
@@ -159,26 +152,30 @@ impl Iterator for SplitFileIter {
     // type Item = Result<BufReader<File>, Error>;
     type Item = Result<Document, Error>;
 
+    /// Iterator on documents that is seamlessly iterating on file splits.
+    /// **Currently uses some recursion and shouldn't (but may) recurse indefinitely.**
     fn next(&mut self) -> Option<Self::Item> {
         // check if current file is None or not
         match &mut self.current_file {
+            // if current file is none, attempt to rotate file
             None => {
-                //if it is, try to rotate. If not found is returned, return None
                 match self.rotate_file() {
-                    // re-call next now that rotate file is not None
+                    //if rotation went well, we can try again to call next()
                     // TODO: remove potential infinite recursion
                     Ok(()) => self.next(),
 
-                    // if rotating went wrong, check if it's because of not found (end of spit files) or other error
+                    // if rotating went wrong, check if it's because of not found (end of split files) or other error
                     Err(e) => match e {
+                        // if ioerror, check if it's because of a not found or not
                         Error::Io(ioerror) => {
-                            // Correct end of split files if not found AND counter has been incremented at least one time
+                            // check not found condition and ensure that files have been rotated at least once
+                            // or it could mean that the base provided path was not found.
                             if ioerror.kind() == std::io::ErrorKind::NotFound
                                 && self.counter > self.counter_start
                             {
                                 None
 
-                            // Return the error for other cases
+                            // If the error is not NotFound, return the error
                             } else {
                                 Some(Err(ioerror.into()))
                             }
@@ -190,47 +187,18 @@ impl Iterator for SplitFileIter {
                 }
             }
 
-            // if there is an already opened file
-            Some(file) => file.next(),
+            // if there is an already opened file, get next document.
+            // if next document is none (=EOF), close file by setting to None and
+            // recursively call next.
+            Some(file) => match file.next() {
+                Some(doc_result) => Some(doc_result),
+                None => {
+                    // close file and try to open a new one
+                    self.current_file = None;
+                    self.next()
+                }
+            },
         }
-        // if current file is none, try to get next
-        // if self.current_file.is_none() {
-        //     self.rotate_file()?;
-        // }
-
-        // // should either have failed previously or be some()
-        // if self.current_file.is_some() {
-        //     match self.current_file.next() {
-        //         Some(doc) => Some(doc),
-        //         None => {
-        //             //if none here, try to get next file
-        //         }
-        //     }
-        // }
-        // let filename = self.file_name_start.to_owned()
-        //     + &self.counter.to_string()
-        //     + &self.file_name_end
-        //     + &self.file_name_extension;
-
-        // let mut full_path = self.base_path.clone();
-        // full_path.push(filename);
-
-        // println!("{full_path:?}");
-        // match File::open(full_path) {
-        //     // everything is ok, we return a bufreader
-        //     Ok(f) => {
-        //         let br = BufReader::new(f);
-        //         self.counter += 1;
-        //         Some(Ok(br))
-        //     }
-
-        //     // if the error is a NotFound, then we just arrived at the end
-        //     // if not, there has been a problem.
-        //     Err(e) => match e.kind() {
-        //         std::io::ErrorKind::NotFound => None,
-        //         _ => Some(Err(e.into())),
-        //     },
-        // }
     }
 }
 

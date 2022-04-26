@@ -12,3 +12,4 @@ pub use reader::SplitFileIter as SplitReader;
 pub use types::Document;
 pub use types::Metadata;
 pub use types::WarcHeaders;
+pub use writer::DocWriter as Writer;

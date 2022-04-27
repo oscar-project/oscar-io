@@ -8,9 +8,10 @@
 use avro_rs::Reader;
 use flate2::bufread::MultiGzDecoder;
 use std::{
+    collections::VecDeque,
     fs::File,
     io::{BufRead, BufReader},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 use crate::error::{self, Error};
@@ -184,6 +185,111 @@ impl Iterator for SplitFileIter {
                         // return the error for non io errors
                         other => Some(Err(other)),
                     },
+                }
+            }
+
+            // if there is an already opened file, get next document.
+            // if next document is none (=EOF), close file by setting to None and
+            // recursively call next.
+            Some(file) => match file.next() {
+                Some(doc_result) => Some(doc_result),
+                None => {
+                    // close file and try to open a new one
+                    self.current_file = None;
+                    self.next()
+                }
+            },
+        }
+    }
+}
+
+pub struct SplitFolderFileIter {
+    current_file: Option<DocReader<BufReader<File>>>,
+    files: Vec<PathBuf>,
+    //files: Box<dyn Iterator<Item = PathBuf>>,
+}
+
+impl SplitFolderFileIter {
+    /// Create a new Self. If folder is a fie, the vector will be only populated with it.
+    pub fn new(folder: &Path) -> Result<Self, Error> {
+        // check if path is file
+        // if it is, return a vec with only one path
+        if folder.is_file() {
+            Ok(Self {
+                current_file: None,
+                files: vec![folder.to_path_buf()],
+            })
+        } else {
+            match std::fs::read_dir(folder) {
+                Ok(read_dir) => {
+                    // read files (max-depth 1) and add them to vector
+                    let mut files = vec![];
+                    for dir in read_dir {
+                        let dir = dir?.path();
+                        if dir.is_file() {
+                            files.push(dir);
+                        }
+                    }
+
+                    if files.is_empty() {
+                        return Err(Error::Custom(format!("No files found in {:?}", folder)));
+                    }
+                    // sort to be deterministic
+                    files.sort_unstable();
+
+                    // reverse so that it goes last...first
+                    // and pop is more practical
+                    files.reverse();
+
+                    Ok(Self {
+                        current_file: None,
+                        files,
+                    })
+                }
+                Err(e) => Err(e.into()),
+            }
+        }
+    }
+
+    pub fn open_next_file(&mut self) -> Option<Result<(), Error>> {
+        let next_file_path = self.files.pop();
+
+        if let Some(next_file_path) = next_file_path {
+            match File::open(next_file_path) {
+                // everything is ok, we return a bufreader
+                Ok(f) => {
+                    let br = BufReader::new(f);
+                    let dr = DocReader::new(br);
+                    self.current_file = Some(dr);
+                    Some(Ok(()))
+                }
+
+                // if the error is a NotFound, then we just arrived at the end
+                // if not, there has been a problem.
+                Err(e) => Some(Err(e.into())),
+            }
+        } else {
+            None
+        }
+    }
+}
+
+impl Iterator for SplitFolderFileIter {
+    type Item = Result<Document, Error>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match &mut self.current_file {
+            // if current file is none, attempt to rotate file
+            None => {
+                match self.open_next_file() {
+                    //if rotation went well, we can try again to call next()
+                    // TODO: remove potential infinite recursion
+                    Some(Ok(())) => self.next(),
+                    Some(Err(e)) => Some(Err(e)),
+                    None => None
+                    // None => Some(Err(Error::Custom(
+                    //     "Something went wrong when trying to open the first file..".to_string(),
+                    // ))),
                 }
             }
 

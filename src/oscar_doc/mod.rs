@@ -3,7 +3,7 @@
 //! Each document is materialized by a [Document], holding [Metadata], [WarcHeaders] and `content` (that is a [String]).
 mod reader;
 mod types;
-mod writer;
+mod write;
 
 #[cfg(feature = "avro")]
 pub use reader::AvroDocReader as AvroReader;
@@ -13,4 +13,4 @@ pub use reader::SplitFolderFileIter as SplitFolderReader;
 pub use types::Document;
 pub use types::Metadata;
 pub use types::WarcHeaders;
-pub use writer::DocWriter as Writer;
+pub use write::DocWriter as Writer;

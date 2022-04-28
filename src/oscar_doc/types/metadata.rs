@@ -41,8 +41,15 @@ impl Metadata {
     }
 
     /// Get a reference to the metadata's annotation.
-    pub fn annotation(&self) -> Option<&Vec<String>> {
-        self.annotation.as_ref()
+    // pub fn annotation(&self) -> Option<&Vec<String>> {
+    pub fn annotation(&self) -> &Option<Vec<String>> {
+        &self.annotation
+    }
+
+    /// Get a reference to the metadata's sentence identifications.
+    #[must_use]
+    pub fn sentence_identifications(&self) -> &[Option<Identification>] {
+        self.sentence_identifications.as_ref()
     }
 }
 

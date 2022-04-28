@@ -1,9 +1,7 @@
 //! Document writer. Does only implement simple write for now.
 use std::io::Write;
 
-use crate::error::Error;
-
-use super::Document;
+use crate::{error::Error, oscar_doc::Document};
 
 pub struct DocWriter<W: Write> {
     w: W,

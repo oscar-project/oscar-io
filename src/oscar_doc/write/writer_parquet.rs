@@ -29,9 +29,9 @@ const DOCUMENT_SCHEMA: &'static str = "
                     required binary lang (UTF8);
                     required float id;
                 }
-                required group annotation (LIST) {
+                required group annotations (LIST) {
                     repeated group list {
-                        optional binary element (UTF8);
+                        optional binary annotation (UTF8);
                     }
                 }
                 required group sentence_identifications (LIST) {
@@ -44,6 +44,7 @@ const DOCUMENT_SCHEMA: &'static str = "
         }
         ";
 lazy_static! {
+    #[derive(Debug)]
     pub static ref SCHEMA: Type = parse_message_type(DOCUMENT_SCHEMA).expect("invalid schema");
 }
 
@@ -58,8 +59,10 @@ impl<W: Write + Seek + TryClone> ParquetWriter<W> {
         })
     }
 
-    pub fn write_docs(docs: &[Document]) -> Result<(), Error> {
-        // docs.into_iter().map(|doc| doc.iter_parquet()).
+    pub fn write_docs(&mut self, docs: &[Document]) -> Result<(), Error> {
+        let doc_grouped = DocGroup::new(docs);
+
+        // iterate on each column and write
         todo!()
     }
 }
@@ -68,10 +71,10 @@ impl<W: Write + Seek + TryClone> ParquetWriter<W> {
 struct DocGroup<'a> {
     contents: Vec<&'a str>,
     warc_headers: Vec<&'a HashMap<String, String>>,
-    //FIXME: use [String]
     annotations: Vec<&'a Option<Vec<String>>>,
     ids: Vec<&'a Identification>,
     line_ids: Vec<&'a [Option<Identification>]>,
+    nb_col: usize,
 }
 
 impl<'a> DocGroup<'a> {
@@ -95,33 +98,56 @@ impl<'a> DocGroup<'a> {
             annotations,
             ids,
             line_ids,
+            nb_col: 0,
         }
     }
 }
 
+// impl<'a> Iterator for DocGroup<'a> {
+//     type Item = DocGroupPart<'a>;
+
+//     fn next(&mut self) -> Option<Self::Item> {
+//         match self.nb_col {
+//             0 => Some(DocGroupPart::Contents(&self.contents)),
+//             1 => Some(DocGroupPart::Warcs(&self.warc_headers)),
+//             2 => Some(DocGroupPart::Annotations(&self.annotations)),
+//             3 => Some(DocGroupPart::Id(&self.ids)),
+//             4 => Some(DocGroupPart::LineIds(&self.line_ids)),
+//             _ => None,
+//         }
+//     }
+// }
 struct DocumentFieldsIterator<'a> {
     inner: &'a Document,
     part_nb: usize,
 }
 
 #[derive(Debug, PartialEq)]
-enum DocumentPart<'a> {
-    Content(&'a String),
+enum DocPart<'a> {
+    Content(&'a str),
     Warc(&'a HashMap<String, String>),
     Annotation(&'a Option<Vec<String>>),
     Id(&'a Identification),
     LineIds(&'a [Option<Identification>]),
 }
+
+enum DocGroupPart<'a> {
+    Contents(&'a Vec<&'a str>),
+    Warcs(&'a Vec<&'a HashMap<String, String>>),
+    Annotations(&'a Vec<&'a Option<Vec<String>>>),
+    Id(&'a Vec<&'a Identification>),
+    LineIds(&'a Vec<&'a [Option<Identification>]>),
+}
 impl<'a> Iterator for DocumentFieldsIterator<'a> {
-    type Item = DocumentPart<'a>;
+    type Item = DocPart<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let ret = match self.part_nb {
-            0 => Some(DocumentPart::Content(self.inner.content())),
-            1 => Some(DocumentPart::Warc(self.inner.warc_headers())),
-            2 => Some(DocumentPart::Annotation(self.inner.metadata().annotation())),
-            3 => Some(DocumentPart::Id(self.inner.identification())),
-            4 => Some(DocumentPart::LineIds(
+            0 => Some(DocPart::Content(self.inner.content())),
+            1 => Some(DocPart::Warc(self.inner.warc_headers())),
+            2 => Some(DocPart::Annotation(self.inner.metadata().annotation())),
+            3 => Some(DocPart::Id(self.inner.identification())),
+            4 => Some(DocPart::LineIds(
                 self.inner.metadata().sentence_identifications(),
             )),
             _ => None,
@@ -140,6 +166,43 @@ impl Document {
 }
 
 #[cfg(test)]
+mod test_writer {
+    use parquet::{
+        file::{properties::WriterProperties, writer::InMemoryWriteableCursor},
+        schema::types::Type,
+    };
+
+    use crate::oscar_doc::write::writer_parquet::SCHEMA;
+
+    use super::ParquetWriter;
+
+    #[test]
+    fn test_simple_write() {
+        let buf = InMemoryWriteableCursor::default();
+        let w = ParquetWriter::new(buf, WriterProperties::builder().build()).unwrap();
+
+        fn print_arbo(node: &Type, indent: usize) {
+            println!(
+                "{}{} ({:?}, {:?})",
+                vec![" "; indent].join(""),
+                node.name(),
+                node.get_basic_info().converted_type(),
+                node.get_basic_info().logical_type()
+            );
+            if let Type::GroupType {
+                basic_info: _,
+                fields: fields,
+            } = node
+            {
+                for sub_node in fields {
+                    print_arbo(sub_node, indent + 4);
+                }
+            }
+        }
+        print_arbo(&*SCHEMA, 0);
+    }
+}
+#[cfg(test)]
 mod test_doc_group {
     use std::collections::HashMap;
 
@@ -155,7 +218,7 @@ mod test_doc_group {
             .collect();
 
         let docgroup = DocGroup::new(&docs);
-        println!("{docgroup:?}");
+        println!("{docgroup:#?}");
     }
 }
 #[cfg(test)]
@@ -165,26 +228,23 @@ mod test_doc_iter {
     use crate::{
         common::Identification,
         lang::Lang,
-        oscar_doc::{write::writer_parquet::DocumentPart, Document, Metadata},
+        oscar_doc::{write::writer_parquet::DocPart, Document, Metadata},
     };
 
     #[test]
     fn foo() {
         let d = Document::new("hello!".to_string(), HashMap::new(), Metadata::default());
         let mut d_iter = d.iter_parquet();
+        assert_eq!(d_iter.next(), Some(DocPart::Content(&"hello!".to_string())));
+        assert_eq!(d_iter.next(), Some(DocPart::Warc(&HashMap::new())));
+        assert_eq!(d_iter.next(), Some(DocPart::Annotation(&None)));
         assert_eq!(
             d_iter.next(),
-            Some(DocumentPart::Content(&"hello!".to_string()))
-        );
-        assert_eq!(d_iter.next(), Some(DocumentPart::Warc(&HashMap::new())));
-        assert_eq!(d_iter.next(), Some(DocumentPart::Annotation(&None)));
-        assert_eq!(
-            d_iter.next(),
-            Some(DocumentPart::Id(&Identification::new(Lang::En, 1.0)))
+            Some(DocPart::Id(&Identification::new(Lang::En, 1.0)))
         );
         assert_eq!(
             d_iter.next(),
-            Some(DocumentPart::LineIds(&vec![Some(Identification::new(
+            Some(DocPart::LineIds(&vec![Some(Identification::new(
                 Lang::En,
                 1.0
             ))]))

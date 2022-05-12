@@ -167,9 +167,14 @@ impl Document {
 
 #[cfg(test)]
 mod test_writer {
+    use std::{fs::File, sync::Arc};
+
     use parquet::{
-        file::{properties::WriterProperties, writer::InMemoryWriteableCursor},
-        schema::types::Type,
+        file::{
+            properties::WriterProperties,
+            writer::{FileWriter, InMemoryWriteableCursor, SerializedFileWriter},
+        },
+        schema::{parser::parse_message_type, types::Type},
     };
 
     use crate::oscar_doc::write::writer_parquet::SCHEMA;
@@ -177,29 +182,96 @@ mod test_writer {
     use super::ParquetWriter;
 
     #[test]
+    fn test_tiny_nested() {
+        let schema = r#"
+            message metadata {
+                repeated group sentence_identifications {
+                        required binary lang (UTF8);
+                        required float prob;
+                }
+            }
+        "#;
+
+        // lang
+        //   DEF: 1 (required)
+        //   REP: 1 (sentence_ids is repeated)
+        // prob
+        //   DEF: 1 (required)
+        //   REP: 1 (sentence_ids is repeated)
+        let schema = parse_message_type(schema).unwrap();
+        print_arbo(&schema, 2);
+        let buf = InMemoryWriteableCursor::default();
+        let mut buf = File::create("./test.parquet").unwrap();
+        let props = WriterProperties::builder().build();
+        let mut w =
+            SerializedFileWriter::new(buf, Arc::new(schema.clone()), Arc::new(props)).unwrap();
+
+        let mut rg = w.next_row_group().unwrap();
+        while let Some(mut col_writer) = rg.next_column().unwrap() {
+            match col_writer {
+                parquet::column::writer::ColumnWriter::BoolColumnWriter(ref mut a) => {
+                    println!("bool")
+                }
+                parquet::column::writer::ColumnWriter::Int32ColumnWriter(ref mut a) => {
+                    println!("int32")
+                }
+                parquet::column::writer::ColumnWriter::Int64ColumnWriter(_) => println!(),
+                parquet::column::writer::ColumnWriter::Int96ColumnWriter(_) => println!(),
+                parquet::column::writer::ColumnWriter::FloatColumnWriter(ref mut a) => {
+                    // prob
+                    println!("float");
+                    let values: Vec<_> = (0..100i32).map(|x| x as f32).collect();
+                    a.write_batch(&values, Some(&[1; 100]), Some(&[1; 100]))
+                        .unwrap();
+                }
+                parquet::column::writer::ColumnWriter::DoubleColumnWriter(_) => println!("double"),
+                parquet::column::writer::ColumnWriter::ByteArrayColumnWriter(ref mut a) => {
+                    println!("bytearray");
+
+                    // build strings, get view as str and into bytearray
+                    let strs: Vec<_> = (0..100i32)
+                        .map(|i| format!("lang_{i}").as_str().into())
+                        .collect();
+                    // let strs_borrow = strs.iter().collect();
+                    let mut def_levels = vec![0; 1];
+                    def_levels.append(&mut vec![1; 99]);
+                    a.write_batch(&strs, Some(&def_levels), Some(&[1; 100]))
+                        .unwrap();
+                }
+                parquet::column::writer::ColumnWriter::FixedLenByteArrayColumnWriter(_) => {
+                    println!("fixedlenbytearray")
+                }
+            }
+            rg.close_column(col_writer).unwrap();
+        }
+        w.close_row_group(rg).unwrap();
+        w.close().unwrap();
+    }
+    #[test]
     fn test_simple_write() {
         let buf = InMemoryWriteableCursor::default();
         let w = ParquetWriter::new(buf, WriterProperties::builder().build()).unwrap();
 
-        fn print_arbo(node: &Type, indent: usize) {
-            println!(
-                "{}{} ({:?}, {:?})",
-                vec![" "; indent].join(""),
-                node.name(),
-                node.get_basic_info().converted_type(),
-                node.get_basic_info().logical_type()
-            );
-            if let Type::GroupType {
-                basic_info: _,
-                fields: fields,
-            } = node
-            {
-                for sub_node in fields {
-                    print_arbo(sub_node, indent + 4);
-                }
+        print_arbo(&*SCHEMA, 0);
+    }
+
+    fn print_arbo(node: &Type, indent: usize) {
+        println!(
+            "{}{} (cvt_type: {:?}, logic_type: {:?})",
+            vec![" "; indent].join(""),
+            node.name(),
+            node.get_basic_info().converted_type(),
+            node.get_basic_info().logical_type()
+        );
+        if let Type::GroupType {
+            basic_info: _,
+            fields: fields,
+        } = node
+        {
+            for sub_node in fields {
+                print_arbo(sub_node, indent + 4);
             }
         }
-        print_arbo(&*SCHEMA, 0);
     }
 }
 #[cfg(test)]

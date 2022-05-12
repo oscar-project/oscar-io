@@ -9,6 +9,8 @@ pub struct DocWriter<W: Write> {
     w: W,
 }
 
+//TODO: DocWriter on GzEncoder
+
 impl<W: Write> DocWriter<W> {
     pub fn new(writer: W) -> Self {
         Self { w: writer }

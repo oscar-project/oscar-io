@@ -2,7 +2,7 @@ use std::{fs::File, io::BufReader, path::PathBuf};
 
 use oscar_io::{
     error::Error,
-    oscar_doc::{Document, Reader, SplitReader},
+    oscar_doc::{Document, Reader, SplitFolderReader, SplitReader},
 };
 #[test]
 fn test_hehe() {
@@ -48,4 +48,15 @@ fn test_split_validity() {
     assert!(docs_from_full.len() != 0);
     assert_eq!(docs_from_full.len(), docs_from_split.len());
     assert_eq!(docs_from_full, docs_from_split);
+}
+
+#[test]
+fn test_split_folder() {
+    let f = PathBuf::from("tests/res/split/");
+    let cr = SplitFolderReader::new(&f).unwrap();
+    for d in cr {
+        println!("{d:?}");
+    }
+    // let nb_docs = cr.into_iter().count();
+    // assert_eq!(nb_docs, 63);
 }

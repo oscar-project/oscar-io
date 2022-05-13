@@ -7,6 +7,7 @@
 #[cfg(feature = "avro")]
 use avro_rs::Reader;
 use flate2::bufread::MultiGzDecoder;
+use log::{debug, info};
 use std::{
     collections::VecDeque,
     fs::File,
@@ -206,6 +207,8 @@ impl Iterator for SplitFileIter {
 pub struct SplitFolderFileIter {
     current_file: Option<DocReader<BufReader<File>>>,
     files: Vec<PathBuf>,
+    nb_files: usize,
+    files_done: usize,
     //files: Box<dyn Iterator<Item = PathBuf>>,
 }
 
@@ -218,6 +221,8 @@ impl SplitFolderFileIter {
             Ok(Self {
                 current_file: None,
                 files: vec![folder.to_path_buf()],
+                nb_files: 1,
+                files_done: 0,
             })
         } else {
             match std::fs::read_dir(folder) {
@@ -240,10 +245,13 @@ impl SplitFolderFileIter {
                     // reverse so that it goes last...first
                     // and pop is more practical
                     files.reverse();
+                    let nb_files = files.len();
 
                     Ok(Self {
                         current_file: None,
                         files,
+                        nb_files,
+                        files_done: 0,
                     })
                 }
                 Err(e) => Err(e.into()),
@@ -261,6 +269,8 @@ impl SplitFolderFileIter {
                     let br = BufReader::new(f);
                     let dr = DocReader::new(br);
                     self.current_file = Some(dr);
+                    self.files_done += 1;
+                    info!("Reading file {}/{}", self.files_done, self.nb_files);
                     Some(Ok(()))
                 }
 

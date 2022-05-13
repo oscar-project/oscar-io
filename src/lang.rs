@@ -216,7 +216,7 @@ impl Lang {
             Self::Bs => "bs",
             Self::Bxr => "bxr",
             Self::Ca => "ca",
-            Self::Cbk => "cbr",
+            Self::Cbk => "cbk",
             Self::Ce => "ce",
             Self::Ceb => "ceb",
             Self::Ckb => "ckb",
@@ -566,5 +566,21 @@ impl Display for Lang {
         let lang_str = self.to_static();
 
         write!(f, "{}", lang_str)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::str::FromStr;
+
+    use super::Lang;
+
+    #[test]
+    fn test_cbk() {
+        let cbk_language = Lang::Cbk;
+        assert_eq!(&cbk_language.to_string(), "cbk");
+
+        let cbk_string = "cbk";
+        assert_eq!(Lang::from_str(cbk_string).unwrap(), Lang::Cbk);
     }
 }

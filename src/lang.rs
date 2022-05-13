@@ -1,6 +1,7 @@
 //! Language enumerations
 use std::{fmt::Display, str::FromStr};
 
+use log::warn;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -404,6 +405,10 @@ impl FromStr for Lang {
             "bxr" => Ok(Self::Bxr),
             "ca" => Ok(Self::Ca),
             "cbk" => Ok(Self::Cbk),
+            "cbr" => {
+                warn!("cbr detected! branching to cbk. More info here: https://github.com/oscar-corpus/ungoliant/issues/53");
+                Ok(Self::Cbk)
+            }
             "ce" => Ok(Self::Ce),
             "ceb" => Ok(Self::Ceb),
             "ckb" => Ok(Self::Ckb),

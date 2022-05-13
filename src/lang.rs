@@ -588,4 +588,13 @@ mod tests {
         let cbk_string = "cbk";
         assert_eq!(Lang::from_str(cbk_string).unwrap(), Lang::Cbk);
     }
+
+    #[test]
+    fn test_cbr() {
+        let cbk_language = Lang::Cbk;
+        assert_eq!(&cbk_language.to_string(), "cbk");
+
+        let cbk_string = "cbr";
+        assert_eq!(Lang::from_str(cbk_string).unwrap(), Lang::Cbk);
+    }
 }

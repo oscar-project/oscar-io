@@ -171,6 +171,7 @@ mod test_writer {
 
     use parquet::{
         column::writer::ColumnWriter,
+        data_type::ByteArray,
         file::{
             properties::WriterProperties,
             writer::{FileWriter, InMemoryWriteableCursor, SerializedFileWriter},
@@ -178,31 +179,12 @@ mod test_writer {
         schema::{parser::parse_message_type, types::Type},
     };
 
-    use crate::{common::Identification, oscar_doc::write::writer_parquet::SCHEMA};
+    use crate::{
+        common::Identification, error::Error, lang::Lang, oscar_doc::write::writer_parquet::SCHEMA,
+    };
 
     use super::ParquetWriter;
 
-    // #[test]
-    // fn test_simple() {
-    //     let schema = r#"
-    //     message identifications {
-    //         repeated binary id (UTF8);
-    //     }"#;
-
-    //     let ids= {
-    //         let test_id = Identification::new(crate::lang::Lang::Af, 0.1);
-    //         let ids = vec![test_id.label().to_string().as_str().into(); 100];
-    //         ids
-    //     };
-    //     let schema = parse_message_type(schema).unwrap();
-    //     print_arbo(&schema, 2);
-
-    //     let buf = InMemoryWriteableCursor::default();
-    //     let buf = File::create("./test.parquet").unwrap();
-    //     let props = WriterProperties::builder().build();
-    //     let mut w =
-    //         SerializedFileWriter::new(buf, Arc::new(schema.clone()), Arc::new(props)).unwrap();
-    // }
     #[test]
     fn test_simple() {
         let schema = r#"
@@ -250,6 +232,84 @@ mod test_writer {
         }
         w.close_row_group(rg).unwrap();
         w.close().unwrap();
+    }
+
+    #[test]
+    fn test_id_auto() {
+        // sentence identifications for a single document
+        type SentenceId = Vec<Option<Identification>>;
+        // sentence identifications for n documents
+        type SentenceIds = Vec<SentenceId>;
+
+        let sentence_ids = vec![
+            Some(Identification::new(Lang::En, 1.0)),
+            Some(Identification::new(Lang::Fr, 0.1)),
+            Some(Identification::new(Lang::Az, 0.2)),
+            None,
+            Some(Identification::new(Lang::Am, 0.3)),
+            None,
+            Some(Identification::new(Lang::Bar, 0.4)),
+            Some(Identification::new(Lang::Zh, 0.5)),
+        ];
+
+        let def_expected = [1, 1, 1, 0, 1, 0, 1, 1];
+        let rep_expected = [0, 1, 1, 1, 1, 1, 1, 1];
+        dbg!(&sentence_ids);
+        auto_ser(&sentence_ids, 0);
+        fn auto_ser(sentenceids: &SentenceId, default_level: u16) -> Result<(), Error> {
+            //def: level where it's null
+            //rep: level at which we have to create a new list
+            let mut def_levels = Vec::with_capacity(sentenceids.len());
+            let mut rep_levels = Vec::with_capacity(sentenceids.len());
+
+            let mut ids: Vec<Option<ByteArray>> = Vec::with_capacity(sentenceids.len());
+            let mut probs = Vec::with_capacity(sentenceids.len());
+
+            let mut sid_iter = sentenceids.iter();
+
+            //first step
+            match sid_iter.next() {
+                None => panic!("empty"),
+                Some(None) => {
+                    ids.push(None);
+                    probs.push(None);
+
+                    def_levels.push(default_level);
+                    rep_levels.push(default_level);
+                }
+                Some(Some(sid)) => {
+                    ids.push(Some(sid.label().to_string().as_str().into()));
+                    probs.push(Some(sid.prob()));
+                    def_levels.push(default_level + 1);
+                    rep_levels.push(default_level);
+                }
+            }
+            for sid in sid_iter {
+                match sid {
+                    None => {
+                        ids.push(None);
+                        probs.push(None);
+
+                        def_levels.push(default_level + 1);
+                        rep_levels.push(default_level);
+                    }
+                    Some(sid) => {
+                        ids.push(Some(sid.label().to_string().as_str().into()));
+                        probs.push(Some(sid.prob()));
+                        def_levels.push(default_level + 1);
+                        rep_levels.push(default_level + 1);
+                    }
+                }
+            }
+
+            println!("def: {def_levels:?}");
+            println!("rep: {rep_levels:?}");
+            println!("{ids:?}");
+            println!("{probs:?}");
+            Ok(())
+        }
+        //todo: go from Vec<Option<Identification>>, and have something automatically setting def and rep levels.
+        //hint: you can use a param "base id level" to be able to use -1/-2 for each thingy
     }
 
     #[test]

@@ -170,6 +170,7 @@ mod test_writer {
     use std::{fs::File, sync::Arc};
 
     use parquet::{
+        column::writer::ColumnWriter,
         file::{
             properties::WriterProperties,
             writer::{FileWriter, InMemoryWriteableCursor, SerializedFileWriter},
@@ -177,9 +178,79 @@ mod test_writer {
         schema::{parser::parse_message_type, types::Type},
     };
 
-    use crate::oscar_doc::write::writer_parquet::SCHEMA;
+    use crate::{common::Identification, oscar_doc::write::writer_parquet::SCHEMA};
 
     use super::ParquetWriter;
+
+    // #[test]
+    // fn test_simple() {
+    //     let schema = r#"
+    //     message identifications {
+    //         repeated binary id (UTF8);
+    //     }"#;
+
+    //     let ids= {
+    //         let test_id = Identification::new(crate::lang::Lang::Af, 0.1);
+    //         let ids = vec![test_id.label().to_string().as_str().into(); 100];
+    //         ids
+    //     };
+    //     let schema = parse_message_type(schema).unwrap();
+    //     print_arbo(&schema, 2);
+
+    //     let buf = InMemoryWriteableCursor::default();
+    //     let buf = File::create("./test.parquet").unwrap();
+    //     let props = WriterProperties::builder().build();
+    //     let mut w =
+    //         SerializedFileWriter::new(buf, Arc::new(schema.clone()), Arc::new(props)).unwrap();
+    // }
+    #[test]
+    fn test_simple() {
+        let schema = r#"
+        message identifications {
+            repeated group idents {
+                required binary id (UTF8);
+                optional float prob;
+            }
+        }"#;
+
+        let (ids, probs) = {
+            let test_id = Identification::new(crate::lang::Lang::Af, 0.1);
+            let ids = vec![test_id.label().to_string().as_str().into(); 100];
+            let probs = vec![*test_id.prob(); 100];
+            (ids, probs)
+        };
+        let schema = parse_message_type(schema).unwrap();
+        print_arbo(&schema, 2);
+
+        let buf = File::create("./test.parquet").unwrap();
+        let props = WriterProperties::builder().build();
+        let mut w =
+            SerializedFileWriter::new(buf, Arc::new(schema.clone()), Arc::new(props)).unwrap();
+
+        let mut rg = w.next_row_group().unwrap();
+        while let Some(mut col_writer) = rg.next_column().unwrap() {
+            if let ColumnWriter::ByteArrayColumnWriter(ref mut a) = col_writer {
+                println!("writing strings");
+                let def_levels = vec![1; 100];
+                let rep_levels = vec![0; 100];
+                a.write_batch(&ids, Some(&def_levels), Some(&rep_levels))
+                    .unwrap();
+                //write ids
+            } else if let ColumnWriter::FloatColumnWriter(ref mut a) = col_writer {
+                println!("writing floats");
+                let def_levels = vec![2; 100];
+                let mut rep_levels = vec![0; 99];
+                rep_levels.push(0);
+                rep_levels.reverse();
+                a.write_batch(&probs, Some(&def_levels), Some(&rep_levels))
+                    .unwrap();
+                //write floats
+            }
+            rg.close_column(col_writer).unwrap();
+        }
+        w.close_row_group(rg).unwrap();
+        w.close().unwrap();
+    }
 
     #[test]
     fn test_tiny_nested() {

@@ -1,5 +1,8 @@
 //! Parquet corpus writer
 //!
+//! The parquet files might not follow the hierarchy of usual jsonl files.
+//! See [here](https://github.com/apache/parquet-format/blob/master/LogicalTypes.md) for parquet logicaltypes
+//! record_id ->
 
 use std::{
     collections::HashMap,
@@ -194,6 +197,14 @@ mod test_writer {
                 optional float prob;
             }
         }"#;
+        let schema = r#"
+        message identifications {
+            repeated group idents (LIST) {
+                repeated group list {
+                    optional binary element (UTF8);
+                  }
+            }
+        }"#;
 
         let (ids, probs) = {
             let test_id = Identification::new(crate::lang::Lang::Af, 0.1);
@@ -217,6 +228,9 @@ mod test_writer {
                 let rep_levels = vec![0; 100];
                 a.write_batch(&ids, Some(&def_levels), Some(&rep_levels))
                     .unwrap();
+
+                println!("def id: {def_levels:?}");
+                println!("rep id: {rep_levels:?}");
                 //write ids
             } else if let ColumnWriter::FloatColumnWriter(ref mut a) = col_writer {
                 println!("writing floats");
@@ -226,6 +240,8 @@ mod test_writer {
                 rep_levels.reverse();
                 a.write_batch(&probs, Some(&def_levels), Some(&rep_levels))
                     .unwrap();
+                println!("def prob: {def_levels:?}");
+                println!("rep prob: {rep_levels:?}");
                 //write floats
             }
             rg.close_column(col_writer).unwrap();
@@ -234,6 +250,70 @@ mod test_writer {
         w.close().unwrap();
     }
 
+    #[test]
+    fn test_simple_list() {
+        let schema = r#"
+        message identifications {
+            repeated group idents {
+                required binary id (UTF8);
+                optional float prob;
+            }
+        }"#;
+        let schema = r#"
+        message identifications {
+            required group idents (LIST) {
+                repeated group list {
+                    optional group element {
+                        required binary id (UTF8);
+                        required float prob;
+                    }
+                  }
+            }
+        }"#;
+
+        let (ids, probs) = {
+            let test_id = Identification::new(crate::lang::Lang::Af, 0.1);
+            let ids = vec![test_id.label().to_string().as_str().into(); 100];
+            let probs = vec![*test_id.prob(); 100];
+            (ids, probs)
+        };
+        let schema = parse_message_type(schema).unwrap();
+        print_arbo(&schema, 2);
+
+        let buf = File::create("./test.parquet").unwrap();
+        let props = WriterProperties::builder().build();
+        let mut w =
+            SerializedFileWriter::new(buf, Arc::new(schema.clone()), Arc::new(props)).unwrap();
+
+        let mut rg = w.next_row_group().unwrap();
+        while let Some(mut col_writer) = rg.next_column().unwrap() {
+            if let ColumnWriter::ByteArrayColumnWriter(ref mut a) = col_writer {
+                println!("writing strings");
+                let def_levels = vec![2; 100];
+                let rep_levels = vec![0; 100];
+                a.write_batch(&ids, Some(&def_levels), Some(&rep_levels))
+                    .unwrap();
+
+                println!("def id: {def_levels:?}");
+                println!("rep id: {rep_levels:?}");
+                //write ids
+            } else if let ColumnWriter::FloatColumnWriter(ref mut a) = col_writer {
+                println!("writing floats");
+                let def_levels = vec![2; 100];
+                let mut rep_levels = vec![0; 99];
+                rep_levels.push(0);
+                rep_levels.reverse();
+                a.write_batch(&probs, Some(&def_levels), Some(&rep_levels))
+                    .unwrap();
+                println!("def prob: {def_levels:?}");
+                println!("rep prob: {rep_levels:?}");
+                //write floats
+            }
+            rg.close_column(col_writer).unwrap();
+        }
+        w.close_row_group(rg).unwrap();
+        w.close().unwrap();
+    }
     #[test]
     fn test_id_auto() {
         // sentence identifications for a single document

@@ -18,47 +18,6 @@ use parquet::{
     file::{properties::WriterProperties, writer::SerializedFileWriter},
     schema::{parser::parse_message_type, types::Type},
 };
-// const DOCUMENT_SCHEMA: &'static str = "
-//         message document {
-//             REQUIRED BYTE_ARRAY content (UTF8);
-//             REQUIRED group warc_headers (MAP) {
-//                 required binary header (UTF8);
-//                 required binary value (UTF8);
-//             }
-//             required group metadata {
-//                 required group identification {
-//                     required binary lang (UTF8);
-//                     required float id;
-//                 }
-//                 required group annotations (LIST) {
-//                     repeated group list {
-//                         optional binary annotation (UTF8);
-//                     }
-//                 }
-//                 required group sentence_identifications (LIST) {
-//                     repeated group list {
-//                         required binary lang (UTF8);
-//                         required float id;
-//                     }
-//                 }
-//             }
-//         }
-//         ";
-
-// const DOCUMENT_SCHEMA: &'static str = r#"
-// message document {
-//     required group sentences (LIST) {
-//         repeated group list {
-//             optional group element {
-//                 required binary sentence (UTF8);
-//                 optional group identification {
-//                     required binary label (UTF8);
-//                     required float prob;
-//                 }
-//             }
-//         }
-//     }
-// }"#;
 
 const DOCUMENT_SCHEMA: &'static str = r#"
 message document {
@@ -70,8 +29,10 @@ message document {
     }
 }"#;
 
+/// Parquet Row.
 #[derive(Debug)]
 struct Row<T>(Vec<T>, Vec<i16>, Vec<i16>);
+
 /// Parquet-compatible document
 #[derive(Debug)]
 struct SimpleDoc {
@@ -94,6 +55,8 @@ impl From<Document> for SimpleDoc {
     }
 }
 
+/// Row-major "view" of a set of docs.
+/// Not really a view per se, since docs are moved and some processing is done.
 #[derive(Debug)]
 struct SimpleDocsRow {
     line_sets: Vec<Vec<ByteArray>>,
@@ -131,18 +94,17 @@ impl From<Vec<Document>> for SimpleDocsRow {
         )
     }
 }
+
 impl SimpleDocsRow {
-    // pub fn lines(&self) -> (Vec<ByteArray>, Vec<i16>, Vec<i16>) {
     pub fn lines(&self) -> Row<ByteArray> {
         let cap = self.line_sets.iter().fold(0, |acc, x| acc + x.len());
-        let mut line_sets_iter = self.line_sets.iter();
         let mut vals = Vec::with_capacity(cap);
         let mut rep = Vec::with_capacity(cap);
 
         // always defined.
         let def = vec![1; cap];
 
-        for line_set in line_sets_iter {
+        for line_set in &self.line_sets {
             rep.push(0);
             rep.extend(vec![1; line_set.len() - 1]);
 
@@ -154,12 +116,10 @@ impl SimpleDocsRow {
 
     pub fn labels(&self) -> Row<ByteArray> {
         let cap = self.labels.len();
-        let mut vals = Vec::with_capacity(cap);
-        let mut def = Vec::with_capacity(cap);
         let mut rep = Vec::with_capacity(cap);
 
-        vals = self.labels.clone();
-        def = vec![0; cap];
+        let vals = self.labels.clone();
+        let def = vec![0; cap];
         rep.push(0);
         rep.extend(vec![0; cap - 1]);
 
@@ -186,8 +146,7 @@ mod tests {
     use std::{collections::HashMap, str::FromStr, sync::Arc};
 
     use parquet::{
-        column::writer::ColumnWriter,
-        data_type::{ByteArray, ByteArrayType, DataType, DoubleType, FloatType},
+        data_type::{ByteArrayType, FloatType},
         file::{properties::WriterProperties, writer::SerializedFileWriter},
         schema::parser::parse_message_type,
     };

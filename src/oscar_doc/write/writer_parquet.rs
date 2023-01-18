@@ -14,48 +14,73 @@ use crate::oscar_doc::types::Document;
 use crate::{common::Identification, error::Error};
 use lazy_static::lazy_static;
 use parquet::{
-    file::{
-        properties::WriterProperties,
-        writer::{SerializedFileWriter, TryClone},
-    },
+    data_type::ByteArray,
+    file::{properties::WriterProperties, writer::SerializedFileWriter},
     schema::{parser::parse_message_type, types::Type},
 };
-const DOCUMENT_SCHEMA: &'static str = "
-        message document {
-            REQUIRED BYTE_ARRAY content (UTF8);
-            REQUIRED group warc_headers (MAP) {
-                required binary header (UTF8);
-                required binary value (UTF8);
-            }
-            required group metadata {
-                required group identification {
-                    required binary lang (UTF8);
-                    required float id;
-                }
-                required group annotations (LIST) {
-                    repeated group list {
-                        optional binary annotation (UTF8);
-                    }
-                }
-                required group sentence_identifications (LIST) {
-                    repeated group list {
-                        required binary lang (UTF8);
-                        required float id;
-                    }
-                }
-            }
+// const DOCUMENT_SCHEMA: &'static str = "
+//         message document {
+//             REQUIRED BYTE_ARRAY content (UTF8);
+//             REQUIRED group warc_headers (MAP) {
+//                 required binary header (UTF8);
+//                 required binary value (UTF8);
+//             }
+//             required group metadata {
+//                 required group identification {
+//                     required binary lang (UTF8);
+//                     required float id;
+//                 }
+//                 required group annotations (LIST) {
+//                     repeated group list {
+//                         optional binary annotation (UTF8);
+//                     }
+//                 }
+//                 required group sentence_identifications (LIST) {
+//                     repeated group list {
+//                         required binary lang (UTF8);
+//                         required float id;
+//                     }
+//                 }
+//             }
+//         }
+//         ";
+
+// const DOCUMENT_SCHEMA: &'static str = r#"
+// message document {
+//     required group sentences (LIST) {
+//         repeated group list {
+//             optional group element {
+//                 required binary sentence (UTF8);
+//                 optional group identification {
+//                     required binary label (UTF8);
+//                     required float prob;
+//                 }
+//             }
+//         }
+//     }
+// }"#;
+
+const DOCUMENT_SCHEMA: &'static str = r#"
+message document {
+    required group lines (LIST) {
+        repeated group list {
+            required binary sentence (UTF8);
         }
-        ";
+        required binary label (UTF8);
+        required float prob;
+    }
+}"#;
+
 lazy_static! {
     #[derive(Debug)]
     pub static ref SCHEMA: Type = parse_message_type(DOCUMENT_SCHEMA).expect("invalid schema");
 }
 
-pub struct ParquetWriter<W: Write + Seek + TryClone> {
+pub struct ParquetWriter<W: Write + Seek> {
     writer: SerializedFileWriter<W>,
 }
 
-impl<W: Write + Seek + TryClone> ParquetWriter<W> {
+impl<W: Write + Seek> ParquetWriter<W> {
     pub fn new(writer: W, props: WriterProperties) -> Result<Self, parquet::errors::ParquetError> {
         Ok(Self {
             writer: SerializedFileWriter::new(writer, Arc::new(SCHEMA.clone()), Arc::new(props))?,
@@ -106,6 +131,18 @@ impl<'a> DocGroup<'a> {
     }
 }
 
+struct ParquetColumn<T> {
+    vals: Vec<T>,
+    def_levels: Vec<i16>,
+    rep_levels: Vec<i16>,
+}
+/// simple, to experiment with parquet
+struct SimpleDocGroup<'a> {
+    contents: Vec<Vec<ByteArray>>,               //lines
+    annotations: Vec<&'a Option<Vec<String>>>,   //annotations (or lack thereof)
+    line_ids: Vec<&'a [Option<Identification>]>, //
+    nb_col: usize,
+}
 // impl<'a> Iterator for DocGroup<'a> {
 //     type Item = DocGroupPart<'a>;
 
@@ -170,7 +207,7 @@ impl Document {
 
 #[cfg(test)]
 mod test_writer {
-    use std::{fs::File, sync::Arc};
+    use std::{collections::HashMap, fs::File, sync::Arc};
 
     use parquet::{
         column::writer::ColumnWriter,
@@ -183,10 +220,13 @@ mod test_writer {
     };
 
     use crate::{
-        common::Identification, error::Error, lang::Lang, oscar_doc::write::writer_parquet::SCHEMA,
+        common::Identification,
+        error::Error,
+        lang::Lang,
+        oscar_doc::{write::writer_parquet::SCHEMA, Document, Metadata},
     };
 
-    use super::ParquetWriter;
+    use super::{ParquetWriter, DOCUMENT_SCHEMA};
 
     #[test]
     fn test_simple() {
@@ -250,6 +290,113 @@ mod test_writer {
         w.close().unwrap();
     }
 
+    #[test]
+    fn test_document() {
+        let content = "A nos enfants de la patrie
+        Le jour de gloire est arrivé
+        This is the French national anthem
+        xxyyxyxyxxyxyxyxyxxy";
+
+        let ids = vec![
+            Some(Identification::new(Lang::Fr, 1.0)),
+            Some(Identification::new(Lang::Fr, 1.0)),
+            Some(Identification::new(Lang::En, 1.0)),
+            None,
+        ];
+        let metadata = Metadata::new(
+            &Identification::new(Lang::Fr, 0.8),
+            &Some(vec!["adult".to_string()]),
+            &ids,
+        );
+        let d = Document::new(content.to_string(), HashMap::new(), metadata);
+
+        let schema = parse_message_type(DOCUMENT_SCHEMA).unwrap();
+        print_arbo(&schema, 2);
+
+        let buf = File::create("./test.parquet").unwrap();
+        let props = WriterProperties::builder().build();
+        let mut w =
+            SerializedFileWriter::new(buf, Arc::new(schema.clone()), Arc::new(props)).unwrap();
+
+        let mut rg = w.next_row_group().unwrap();
+        let mut nb_col = 0;
+        while let Some(mut col_writer) = rg.next_column().unwrap() {
+            match col_writer {
+                ColumnWriter::BoolColumnWriter(ref mut c) => println!("bool"),
+                ColumnWriter::Int32ColumnWriter(ref mut c) => println!("int32"),
+                ColumnWriter::Int64ColumnWriter(ref mut c) => println!("int64"),
+                ColumnWriter::Int96ColumnWriter(ref mut c) => println!("int96"),
+                ColumnWriter::FloatColumnWriter(ref mut c) => {
+                    let probs = d.metadata().sentence_identifications();
+                    // .iter()
+                    // .map(|x| match x {
+                    //     Some(id) => id.prob(),
+                    //     None => &0.0,
+                    // })
+                    // .collect();
+                    let def_levels: Vec<i16> = probs
+                        .iter()
+                        .map(|x| if x.is_none() { 1 } else { 2 })
+                        .collect();
+                    let rep_levels = vec![1; probs.len()];
+
+                    let probs: Vec<f32> = probs
+                        .iter()
+                        .map(|x| match x {
+                            Some(id) => *id.prob(),
+                            None => 0.0,
+                        })
+                        .collect();
+
+                    c.write_batch(&probs, Some(&def_levels), Some(&rep_levels))
+                        .unwrap();
+                }
+                ColumnWriter::DoubleColumnWriter(ref mut c) => println!("double"),
+                ColumnWriter::ByteArrayColumnWriter(ref mut c) => match nb_col {
+                    0 => {
+                        let lines: Vec<ByteArray> = d.content().lines().map(|x| x.into()).collect();
+                        //all defined
+                        let def_levels = vec![1; lines.len()];
+                        //first one creates a new nesting
+                        let mut rep_levels = vec![1; lines.len() - 1];
+                        rep_levels.push(0);
+                        rep_levels.reverse();
+
+                        c.write_batch(&lines, Some(&def_levels), Some(&rep_levels))
+                            .unwrap();
+
+                        nb_col += 1;
+                    }
+                    1 => {
+                        let labels: Vec<ByteArray> = d
+                            .metadata()
+                            .sentence_identifications()
+                            .iter()
+                            .map(|x| match x {
+                                Some(id) => id.label().to_string().as_str().into(),
+                                None => ByteArray::new(),
+                            })
+                            .collect();
+                        // definition is 2 if label is not None
+                        let def_levels: Vec<_> = labels
+                            .iter()
+                            .map(|x| if x.is_empty() { 2 } else { 1 })
+                            .collect();
+                        let rep_levels = vec![2; labels.len()];
+
+                        c.write_batch(&labels, Some(&def_levels), Some(&rep_levels))
+                            .unwrap();
+                        nb_col += 1;
+                    }
+                    _ => panic!("wrong col type"),
+                },
+                ColumnWriter::FixedLenByteArrayColumnWriter(ref mut c) => println!("flbytearray"),
+            }
+            rg.close_column(col_writer).unwrap();
+        }
+        w.close_row_group(rg).unwrap();
+        w.close().unwrap();
+    }
     #[test]
     fn test_simple_list() {
         let schema = r#"

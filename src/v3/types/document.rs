@@ -92,7 +92,10 @@ impl Default for Metadata {
         }
     }
 }
+
+// TODO make this a newtype so that getters can do the u8 conversion
 pub type WarcHeaders = HashMap<WarcHeader, Vec<u8>>;
+
 pub type WarcHeadersSer = HashMap<WarcHeader, String>;
 
 /// A Document is a structure holding content, WARC headers and OSCAR-specific metadata.

@@ -65,16 +65,5 @@ pub trait Identifier<T: Deref<Target = str> + Clone> {
 
 #[cfg(test)]
 mod tests {
-    use oxilangtag::LanguageTag;
-
-    use super::Identification;
-
     // TODO tests
-
-    // #[test]
-    // fn test_incorrect_tag() {
-    //     let tag = "english :)";
-    //     let id = super::Identification::new(LanguageTag::parse(tag).unwrap(), 1.0);
-    //     assert!(id.is_err());
-    // }
 }

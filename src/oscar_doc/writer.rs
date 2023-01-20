@@ -21,7 +21,7 @@ impl<W: Write> DocWriter<W> {
     /// Does not call [Self::flush], so be careful of calling it after writing
     pub fn write(&mut self, doc: &Document) -> Result<(), Error> {
         let write_bytes = serde_json::to_string(doc)? + "\n";
-        self.w.write(&write_bytes.as_bytes())?;
+        self.w.write_all(write_bytes.as_bytes())?;
 
         Ok(())
     }

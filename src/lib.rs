@@ -5,3 +5,5 @@ pub mod lang;
 pub mod oscar_doc;
 
 pub mod v3;
+
+pub use error::Error;

@@ -9,4 +9,4 @@ mod writertrait;
 
 use metawriter::MetaWriter;
 pub use writer::WriterDoc as Writer;
-use writertrait::WriterTrait;
+pub use writertrait::WriterTrait;

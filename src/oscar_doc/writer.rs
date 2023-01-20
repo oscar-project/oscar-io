@@ -3,7 +3,7 @@ use std::io::Write;
 
 use crate::error::Error;
 
-use super::Document;
+use crate::v3::Document;
 
 pub struct DocWriter<W: Write> {
     w: W,
@@ -21,7 +21,7 @@ impl<W: Write> DocWriter<W> {
     /// Does not call [Self::flush], so be careful of calling it after writing
     pub fn write(&mut self, doc: &Document) -> Result<(), Error> {
         let write_bytes = serde_json::to_string(doc)? + "\n";
-        self.w.write(&write_bytes.as_bytes())?;
+        self.w.write_all(write_bytes.as_bytes())?;
 
         Ok(())
     }
@@ -48,7 +48,8 @@ mod tests {
         io::{BufReader, Cursor},
     };
 
-    use crate::oscar_doc::{Document, Reader};
+    use crate::oscar_doc::Reader;
+    use crate::v3::Document;
 
     use super::DocWriter;
 

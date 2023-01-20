@@ -1,8 +1,9 @@
 use std::{fs::File, io::BufReader, path::PathBuf};
 
+use oscar_io::v3::Document;
 use oscar_io::{
     error::Error,
-    oscar_doc::{Document, Reader, SplitFolderReader, SplitReader},
+    oscar_doc::{Reader, SplitFolderReader, SplitReader},
 };
 #[test]
 fn test_hehe() {

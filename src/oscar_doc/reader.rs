@@ -7,17 +7,17 @@
 #[cfg(feature = "avro")]
 use avro_rs::Reader;
 use flate2::bufread::MultiGzDecoder;
-use log::{debug, info};
+use log::info;
 use std::{
-    collections::VecDeque,
     fs::File,
     io::{BufRead, BufReader},
     path::{Path, PathBuf},
 };
 
-use crate::error::{self, Error};
+use crate::error::Error;
 
-use super::types::Document;
+// use super::types::Document;
+use crate::v3::Document;
 
 /// Document reader.
 /// The inner type has to implement [BufRead].
@@ -324,9 +324,8 @@ mod tests {
     use std::io::{BufReader, Cursor, Write};
 
     use super::DocReader;
-    use crate::{error::Error, oscar_doc::Document};
-    use flate2::{bufread::MultiGzDecoder, write::GzEncoder, Compression};
-    use std::io::BufRead;
+    use crate::{error::Error, v3::Document};
+    use flate2::{write::GzEncoder, Compression};
 
     fn get_samples() -> &'static str {
         r#"{"content":"this is the main content","warc_headers":{"warc-type":"conversion","warc-date":"2021-09-16T11:37:01Z","warc-refers-to":"<urn:uuid:3cc5dbf1-6932-44e3-a5f9-87bddb242ed1>","warc-block-digest":"sha1:AAN5C7C7I2JOXM5ZYB5YNFPRC5N6GJES","content-type":"text/plain","warc-target-uri":"http://accueil-enfants-d-un-meme-pere.be/","content-length":"5095","warc-identified-content-language":"fra,eng","warc-record-id":"<urn:uuid:7c1c010a-61ca-4383-92ba-008390a56fc9>"},"metadata":{"identification":{"label":"fr","prob":0.9586384},"annotation":["short_sentences","header","footer"],"sentence_identifications":[{"label": "fr", "prob": 0.9}]}}

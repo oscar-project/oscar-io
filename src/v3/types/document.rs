@@ -16,12 +16,18 @@ type Identification = IdentificationGen<String>;
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 
 /// OSCAR-specific metadata
-/// TODO: make it a HashMap
-/// TODO: make annotation/categories hashmaps
+// TODO: make it a HashMap
+// TODO: make annotation/categories hashmaps
+/// Contains document metadata:
+/// - `identification` is the document-level language identification (see [Identification])
+/// - `harmful_pp` is the perplexiry of the document, related to a model trained to recognize adult documents
+/// - `quality_warnings` (ex-annotation) contains tags for some length/content based quality filters
+/// - `categories` contains categories based on the url of the document. Uses the ut1 blocklist as a base.
+/// - `sentence_identifiations` contains line-level identifications.
 pub struct Metadata {
     identification: Identification,
     harmful_pp: Option<f32>,
-    annotation: Option<Vec<String>>,
+    quality_warnings: Option<Vec<String>>,
     categories: Option<Vec<String>>,
     sentence_identifications: Vec<Option<Identification>>,
 }
@@ -34,16 +40,16 @@ impl Metadata {
         Metadata {
             identification: identification.clone(),
             harmful_pp: None,
-            annotation: None,
+            quality_warnings: None,
             categories: None,
             sentence_identifications: sentence_identifications.to_owned(),
         }
     }
 
     pub fn add_annotation(&mut self, annotation: String) {
-        match &mut self.annotation {
+        match &mut self.quality_warnings {
             Some(anno) => anno.push(annotation),
-            None => self.annotation = Some(vec![annotation]),
+            None => self.quality_warnings = Some(vec![annotation]),
         }
     }
 
@@ -62,7 +68,7 @@ impl Metadata {
 
     /// Get a reference to the metadata's annotation.
     pub fn annotation(&self) -> Option<&Vec<String>> {
-        self.annotation.as_ref()
+        self.quality_warnings.as_ref()
     }
 
     /// Get a reference to the metadata's sentence identifications.
@@ -83,7 +89,7 @@ impl Default for Metadata {
         Self {
             identification: Identification::new(LanguageTag::parse("en".to_string()).unwrap(), 1.0),
             harmful_pp: None,
-            annotation: None,
+            quality_warnings: None,
             categories: None,
             sentence_identifications: vec![Some(Identification::new(
                 LanguageTag::parse("en".to_string()).unwrap(),

@@ -27,6 +27,7 @@ type Identification = IdentificationGen<String>;
 pub struct Metadata {
     identification: Identification,
     harmful_pp: Option<f32>,
+    tlsh: Option<String>,
     quality_warnings: Option<Vec<String>>,
     categories: Option<Vec<String>>,
     sentence_identifications: Vec<Option<Identification>>,
@@ -40,6 +41,7 @@ impl Metadata {
         Metadata {
             identification: identification.clone(),
             harmful_pp: None,
+            tlsh: None,
             quality_warnings: None,
             categories: None,
             sentence_identifications: sentence_identifications.to_owned(),
@@ -79,6 +81,14 @@ impl Metadata {
     pub fn set_harmful_pp(&mut self, harmful_pp: Option<f32>) {
         self.harmful_pp = harmful_pp;
     }
+
+    pub fn tlsh(&self) -> Option<&String> {
+        self.tlsh.as_ref()
+    }
+
+    pub fn set_tlsh(&mut self, tlsh: Option<String>) {
+        self.tlsh = tlsh;
+    }
 }
 
 impl Default for Metadata {
@@ -89,6 +99,7 @@ impl Default for Metadata {
         Self {
             identification: Identification::new(LanguageTag::parse("en".to_string()).unwrap(), 1.0),
             harmful_pp: None,
+            tlsh: None,
             quality_warnings: None,
             categories: None,
             sentence_identifications: vec![Some(Identification::new(

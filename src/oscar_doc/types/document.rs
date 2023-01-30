@@ -26,7 +26,7 @@ impl Document {
     /// Instantiate a Document from a record and a related metadata.
 
     /// Get a reference to the Document's identification
-    pub fn identification(&self) -> &Identification {
+    pub fn identification(&self) -> &Identification<String> {
         self.metadata().identification()
     }
 

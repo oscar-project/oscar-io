@@ -1,24 +1,24 @@
-use schemars::JsonSchema;
+use oxilangtag::LanguageTag;
 use serde::{Deserialize, Serialize};
 
-use crate::{common::Identification, lang::Lang};
+use crate::common::Identification;
 
 /// OSCAR Metadata.
 /// Contains document identification, annotations and sentence-level identifications.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct Metadata {
-    identification: Identification,
+    identification: Identification<String>,
     annotation: Option<Vec<String>>,
-    sentence_identifications: Vec<Option<Identification>>,
+    sentence_identifications: Vec<Option<Identification<String>>>,
 }
 
 impl Metadata {
     /// Create a new [Metadata].
     /// Internally clones provided parameters
     pub fn new(
-        identification: &Identification,
+        identification: &Identification<String>,
         annotation: &Option<Vec<String>>,
-        sentence_identifications: &[Option<Identification>],
+        sentence_identifications: &[Option<Identification<String>>],
     ) -> Self {
         Metadata {
             identification: identification.clone(),
@@ -36,7 +36,7 @@ impl Metadata {
     }
 
     /// Get a reference to the identification
-    pub fn identification(&self) -> &Identification {
+    pub fn identification(&self) -> &Identification<String> {
         &self.identification
     }
 
@@ -50,10 +50,11 @@ impl Default for Metadata {
     /// default Metadata is English with 1.0 prob,
     /// no annotation and a single english sentence with 1.0 prob.
     fn default() -> Self {
+        let default_tag = LanguageTag::parse("en".to_string()).unwrap();
         Self {
-            identification: Identification::new(Lang::En, 1.0),
+            identification: Identification::new(default_tag.clone(), 1.0),
             annotation: None,
-            sentence_identifications: vec![Some(Identification::new(Lang::En, 1.0))],
+            sentence_identifications: vec![Some(Identification::new(default_tag, 1.0))],
         }
     }
 }

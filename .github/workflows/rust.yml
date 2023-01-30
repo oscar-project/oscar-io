@@ -2,9 +2,9 @@ name: Rust
 
 on:
   push:
-    branches: [ master, dev ]
+    branches: [ main, dev ]
   pull_request:
-    branches: [ master, dev ]
+    branches: [ main, dev ]
 
 env:
   CARGO_TERM_COLOR: always
@@ -19,8 +19,6 @@ jobs:
     - name: Build
       run: cargo build --verbose
 
-    - name: Fetch identification bin
-      run: wget https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.bin
     - name: Run tests
       run: cargo test --verbose
       

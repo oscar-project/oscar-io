@@ -78,6 +78,9 @@ impl Metadata {
         self.sentence_identifications.as_ref()
     }
 
+    pub fn harmful_pp(&self) -> Option<f32> {
+        self.harmful_pp
+    }
     pub fn set_harmful_pp(&mut self, harmful_pp: Option<f32>) {
         self.harmful_pp = harmful_pp;
     }

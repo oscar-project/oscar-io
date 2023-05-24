@@ -92,6 +92,13 @@ impl Metadata {
     pub fn set_tlsh(&mut self, tlsh: Option<String>) {
         self.tlsh = tlsh;
     }
+
+    pub fn set_sentence_identifications(
+        &mut self,
+        sentence_identifications: Vec<Option<Identification>>,
+    ) {
+        self.sentence_identifications = sentence_identifications;
+    }
 }
 
 impl Default for Metadata {

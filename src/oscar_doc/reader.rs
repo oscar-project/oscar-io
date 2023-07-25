@@ -17,7 +17,7 @@ use std::{
 use crate::error::Error;
 
 // use super::types::Document;
-use crate::v3::Document;
+use crate::oscar_doc::Document;
 
 /// Document reader.
 /// The inner type has to implement [BufRead].
@@ -324,7 +324,7 @@ mod tests {
     use std::io::{BufReader, Cursor, Write};
 
     use super::DocReader;
-    use crate::{error::Error, v3::Document};
+    use crate::{error::Error, oscar_doc::Document};
     use flate2::{write::GzEncoder, Compression};
 
     fn get_samples() -> &'static str {

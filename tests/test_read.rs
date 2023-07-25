@@ -1,6 +1,6 @@
 use std::{fs::File, io::BufReader, path::PathBuf};
 
-use oscar_io::v3::Document;
+use oscar_io::oscar_doc::Document;
 use oscar_io::{
     error::Error,
     oscar_doc::{Reader, SplitFolderReader, SplitReader},

@@ -3,7 +3,7 @@ use std::io::Write;
 
 use crate::error::Error;
 
-use crate::v3::Document;
+use crate::oscar_doc::Document;
 
 pub struct DocWriter<W: Write> {
     w: W,
@@ -48,8 +48,8 @@ mod tests {
         io::{BufReader, Cursor},
     };
 
+    use crate::oscar_doc::Document;
     use crate::oscar_doc::Reader;
-    use crate::v3::Document;
 
     use super::DocWriter;
 

@@ -4,6 +4,7 @@
 //!
 //! The module is messy because OSCAR Schema v3 writer/reader is copied from metadata R/W from v1.1.
 mod metawriter;
+mod new_writer;
 mod writer;
 mod writertrait;
 

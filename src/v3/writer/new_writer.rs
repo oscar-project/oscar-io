@@ -405,6 +405,28 @@ mod test {
     }
 
     #[test]
+    fn test_unbound_compressed() {
+        let dir = tempdir().unwrap();
+        let stem = "test".to_string();
+        let mut w = Writer::new(dir.path(), stem, Some(Comp::Zstd { level: 0 }), None).unwrap();
+        let data = vec!["test\n", "data\n", ":)\n"];
+
+        for d in &data {
+            w.write_all(d.as_bytes()).unwrap();
+        }
+        w.flush().unwrap();
+
+        let p = w.current_filepath();
+        std::mem::drop(w);
+
+        let f = File::open(p).unwrap();
+        let dec = zstd::decode_all(f).unwrap();
+        let res = String::from_utf8(dec).unwrap();
+
+        assert_eq!(res, data.join(""))
+    }
+
+    #[test]
     // We bound each file to 5 bytes of data
     // We should have the following result:
     // 1: test\n

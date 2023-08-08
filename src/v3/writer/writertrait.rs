@@ -4,7 +4,7 @@ use oxilangtag::LanguageTag;
 
 use crate::error::Error;
 
-use super::new_writer::Comp;
+use super::writer::Comp;
 
 pub trait WriterTrait {
     type Item;
@@ -19,5 +19,4 @@ pub trait WriterTrait {
         Self: Sized;
     fn write(&mut self, vals: Vec<Self::Item>) -> Result<(), Error>;
     fn write_single(&mut self, val: &Self::Item) -> Result<(), Error>;
-    fn close_meta(&mut self) -> Result<(), Error>;
 }

@@ -13,10 +13,19 @@ use crate::v3::Document;
 
 use crate::error;
 
-use super::{MetaWriter, WriterTrait};
+use super::{
+    new_writer::{Comp, NewWriter},
+    MetaWriter, WriterTrait,
+};
 
 pub struct WriterDoc {
-    handle: MetaWriter,
+    handle: NewWriter,
+}
+
+impl WriterDoc {
+    pub fn flush(&mut self) -> Result<(), std::io::Error> {
+        self.handle.flush()
+    }
 }
 
 impl WriterTrait for WriterDoc {
@@ -29,9 +38,16 @@ impl WriterTrait for WriterDoc {
         dst: &Path,
         lang: LanguageTag<String>,
         _size_limit: Option<u64>,
+        comp: Option<Comp>,
     ) -> Result<Self, error::Error> {
         Ok(Self {
-            handle: MetaWriter::new(dst, lang),
+            handle: NewWriter::new(
+                dst,
+                lang.to_string(),
+                // Some(Comp::Zstd { level: 0 }),
+                comp,
+                _size_limit.map(|x| x as usize),
+            )?,
         })
     }
     /// writes the provided [MergedPiece], checking language identification.
@@ -49,11 +65,11 @@ impl WriterTrait for WriterDoc {
     fn write_single(&mut self, piece: &Document) -> Result<(), error::Error> {
         Ok(serde_json::to_writer(&mut self.handle, piece)?)
     }
-    /// Binds to [MetaWriter::close_file].
-    /// Closes current metadata file.
-    /// TODO: put this in impl Drop?
+    // Binds to [MetaWriter::close_file].
+    // Closes current metadata file.
+    // TODO: put this in impl Drop?
     fn close_meta(&mut self) -> Result<(), error::Error> {
-        self.handle.close_file()
+        todo!()
     }
 }
 #[cfg(test)]
@@ -79,6 +95,7 @@ mod tests {
             dst,
             LanguageTag::parse("en".to_string()).unwrap(),
             Some(1_000_000),
+            None,
         );
         std::fs::remove_dir_all(dst).unwrap();
     }
@@ -90,6 +107,7 @@ mod tests {
             dst.path(),
             LanguageTag::parse("fr".to_string()).unwrap(),
             Some(10),
+            None,
         )
         .unwrap();
 
@@ -109,12 +127,16 @@ Ecoutez ça va plutôt bien.";
         let doc = vec![Document::new(sentences.to_string(), headers, metadata)];
 
         wr.write(doc.clone()).unwrap();
+        wr.handle.flush();
 
         // check if content is the same
         let _sentences = String::new();
-        let pathd = PathBuf::from(dst.path()).join("fr_meta.jsonl");
-        let f = File::open(pathd).unwrap();
+        let pathd = PathBuf::from(dst.path()).join("fr.jsonl");
+        dbg!(&pathd);
+        // std::thread::sleep(std::time::Duration::from_secs(50));
+        let f = File::open(&pathd).unwrap();
 
+        dbg!(std::fs::read_to_string(&pathd));
         let document: Document = serde_json::from_reader(&f).unwrap();
         let sentences = document.content();
         //to account for \n\n
@@ -150,11 +172,13 @@ Ecoutez ça va plutôt bien.";
             dst.path(),
             LanguageTag::parse("fr".to_string()).unwrap(),
             Some(10),
+            None,
         )
         .unwrap();
 
         wr.write(vec![doc.clone()]).unwrap();
-        let pathd = PathBuf::from(dst.path()).join("fr_meta.jsonl");
+        wr.flush().unwrap();
+        let pathd = PathBuf::from(dst.path()).join("fr.jsonl");
         let f = File::open(pathd).unwrap();
 
         let doc_from_ser: Document = serde_json::from_reader(&f).unwrap();

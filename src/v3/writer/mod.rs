@@ -9,5 +9,6 @@ mod writer;
 mod writertrait;
 
 use metawriter::MetaWriter;
+pub use new_writer::Comp;
 pub use writer::WriterDoc as Writer;
 pub use writertrait::WriterTrait;

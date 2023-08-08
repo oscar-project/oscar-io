@@ -3,165 +3,12 @@ use std::{
     fs::File,
     io::{BufWriter, Write},
     path::{Path, PathBuf},
+    str::FromStr,
 };
 
 use crate::Error;
 
-// enum<W> Comp {
-//     Zstd,
-// }
-
-// impl Comp {
-//     fn encoder(self, f: File) -> W {
-//         match self {
-//             Comp::Zstd => zstd::Encoder::new(f, 0).unwrap()
-//         }
-//     }
-// }
-// struct SplitWriter<W: Write> {
-//     dst: PathBuf,
-//     comp: Option<Comp>,
-//     fp: Option<File>,
-//     w : Option<W>,
-//     max_size: usize,
-//     current_size: usize,
-//     nb_files: u32,
-// }
-
-// impl<W: Write> SplitWriter<W> {
-//     /// Create a new writer. `max_size` is in bytes.
-//     pub fn new(dst: &Path, max_size: usize, comp: Option<Comp>) -> Self {
-//         Self {
-//             dst: dst.to_path_buf(),
-//             fp: None,
-//             w: None,
-//             comp,
-//             max_size,
-//             current_size: 0,
-//             nb_files: 0,
-//         }
-//     }
-
-//     /// transforms foo.bar into foo_part_<part_number>.bar
-//     #[inline]
-//     fn format_filename(filename: &Path, part_number: u64) -> Option<PathBuf> {
-//         if let (Some(stem), Some(extension)) = (filename.file_stem(), filename.extension()) {
-//             // clone filename
-//             let mut next_filename = filename.to_path_buf();
-
-//             // get stem and forge new filename
-//             let mut file_stem = stem.to_os_string();
-//             file_stem.push(format!("_part_{}", part_number));
-//             next_filename.set_file_name(file_stem);
-//             next_filename.set_extension(extension);
-
-//             Some(next_filename)
-//         } else {
-//             None
-//         }
-//     }
-
-//     // TODO: return error if no stem/extension
-//     /// Get the next filename **and** bump `self.nb_files`
-//     fn next_filename(&mut self) -> Option<Cow<Path>> {
-//         if self.nb_files == 0 {
-//             self.nb_files += 1;
-//             Some(Cow::from(&self.dst))
-//         } else if let (Some(stem), Some(extension)) = (self.dst.file_stem(), self.dst.extension()) {
-//             // clone filename
-//             let mut next_filename = self.dst.clone();
-
-//             // get stem and forge new filename
-//             let mut file_stem = stem.to_os_string();
-//             file_stem.push(format!("_part_{}", self.nb_files));
-//             next_filename.set_file_name(file_stem);
-//             next_filename.set_extension(extension);
-
-//             // increase file count
-//             self.nb_files += 1;
-
-//             Some(Cow::from(next_filename))
-//         } else {
-//             None
-//         }
-//     }
-
-//     /// Close current file and open a new one
-//     pub fn rotate_file(&mut self) -> std::io::Result<()> {
-//         if self.nb_files == 1 {
-//             // moving foo.bar to foo_part_1.bar
-//             let new_filename = Self::format_filename(&self.dst, 1)
-//                 .expect("destination is not a file or has no extension. {}");
-
-//             // early return if filename exists
-//             if new_filename.exists() {
-//                 return Err(std::io::Error::new(
-//                     std::io::ErrorKind::AlreadyExists,
-//                     format!("{:?}", new_filename),
-//                 ));
-//             } else {
-//                 self.fp = None;
-//                 self.w = None;
-//                 self.nb_files += 1;
-//                 std::fs::rename(&self.dst, new_filename)?;
-//             }
-//         }
-
-//         let filename = self.next_filename().expect("could not get next filename");
-
-//         if filename.exists() {
-//             Err(std::io::Error::new(
-//                 std::io::ErrorKind::AlreadyExists,
-//                 format!("{:?}", filename),
-//             ))
-//         } else {
-//             self.fp = Some(File::create(&filename)?);
-//             self.w = Some(self.comp.unwrap().encoder(self.fp.unwrap()));
-//             self.current_size = 0;
-//             Ok(())
-//         }
-//     }
-// }
-
-// impl<W: Write> Write for SplitWriter<W> {
-//     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-//         // create first file if fp is none
-//         if self.fp.is_none() {
-//             self.rotate_file()?;
-//         }
-
-//         // create new split if current is full
-//         if self.current_size + buf.len() > self.max_size {
-//             self.rotate_file()?;
-//         }
-
-//         // print warning if buf very large
-//         // if buf.len() > self.max_size {
-//         //     warn!("Current entry is too large: Split size limits won't be enforced (entry size: {}, max size:{}", buf.len(), self.max_size);
-//         // }
-
-//         if let Some(fp) = &mut self.fp {
-//             let bytes_written = fp.write(buf)?;
-//             self.current_size += bytes_written;
-//             Ok(bytes_written)
-//         } else {
-//             Err(std::io::Error::new(
-//                 std::io::ErrorKind::NotFound,
-//                 "No file to write to.",
-//             ))
-//         }
-//     }
-
-//     fn flush(&mut self) -> std::io::Result<()> {
-//         if let Some(fp) = &mut self.fp {
-//             fp.flush()
-//         } else {
-//             Ok(())
-//         }
-//     }
-// }
-
-enum Comp {
+pub enum Comp {
     Zstd { level: i32 },
 }
 
@@ -173,7 +20,7 @@ impl Comp {
     }
 }
 
-struct Writer {
+pub struct NewWriter {
     dir: PathBuf,
     file_stem: String,
 
@@ -181,11 +28,11 @@ struct Writer {
     size_b: usize,
     max_size_b: Option<usize>,
 
-    writer: Box<dyn Write>,
+    writer: Box<dyn Write + Send>,
     nb_files: u64,
 }
 
-impl Writer {
+impl NewWriter {
     pub fn new(
         dir: &Path,
         file_stem: String,
@@ -283,25 +130,30 @@ impl Writer {
             // close before renaming
             // There's some DRY here because we want to drop the writer *before* renaming the file
             // It could be okay to keep the renaming here, and remove the else clause to drop + create new writer afterwards
+            //self.writer.flush()?;
             self.writer = Self::new_writer(&next_filename, self.comp.as_ref())?;
 
             std::fs::rename(current_filename, fixed_first_fp)?;
 
         // close part_n, open part_n+1
         } else {
+            //self.writer.flush()?;
             self.writer = Self::new_writer(&next_filename, self.comp.as_ref())?;
             self.nb_files += 1;
 
             return Ok(());
         }
+
+        self.size_b = 0;
+
         Ok(())
     }
 
-    fn new_writer(fp: &Path, comp: Option<&Comp>) -> Result<Box<dyn Write>, std::io::Error> {
+    fn new_writer(fp: &Path, comp: Option<&Comp>) -> Result<Box<dyn Write + Send>, std::io::Error> {
         let f = File::create(fp)?;
 
         // Create writer depending on comp
-        let writer: Box<dyn Write> = match comp {
+        let writer: Box<dyn Write + Send> = match comp {
             None => Box::new(BufWriter::new(f)),
             Some(Comp::Zstd { level }) => {
                 Box::new(zstd::Encoder::new(f, *level).unwrap().auto_finish())
@@ -312,7 +164,7 @@ impl Writer {
     }
 }
 
-impl Write for Writer {
+impl Write for NewWriter {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         let bytes_written = if let Some(max_size_b) = self.max_size_b {
             // check if there's enough space to write.
@@ -355,13 +207,13 @@ mod test {
 
     use crate::v3::writer::new_writer::Comp;
 
-    use super::Writer;
+    use super::NewWriter;
 
     #[test]
     fn test_unbound_uncompressed() {
         let dir = tempdir().unwrap();
         let stem = "test".to_string();
-        let mut w = Writer::new(dir.path(), stem, None, None).unwrap();
+        let mut w = NewWriter::new(dir.path(), stem, None, None).unwrap();
         let data = vec!["test\n", "data\n", ":)\n"];
 
         for d in &data {
@@ -385,7 +237,7 @@ mod test {
         let dir = tempdir().unwrap();
         let stem = "test".to_string();
         let bound = 5;
-        let mut w = Writer::new(dir.path(), stem, None, Some(bound)).unwrap();
+        let mut w = NewWriter::new(dir.path(), stem, None, Some(bound)).unwrap();
 
         let data = vec!["test\n", "1\n", "2\n", "data\n", ":)\n"];
         let expected = vec!["test\n", "1\n2\n", "data\n", ":)\n"];
@@ -408,7 +260,7 @@ mod test {
     fn test_unbound_compressed() {
         let dir = tempdir().unwrap();
         let stem = "test".to_string();
-        let mut w = Writer::new(dir.path(), stem, Some(Comp::Zstd { level: 0 }), None).unwrap();
+        let mut w = NewWriter::new(dir.path(), stem, Some(Comp::Zstd { level: 0 }), None).unwrap();
         let data = vec!["test\n", "data\n", ":)\n"];
 
         for d in &data {
@@ -438,7 +290,7 @@ mod test {
         let stem = "test".to_string();
         let bound = 5;
         let mut w =
-            Writer::new(dir.path(), stem, Some(Comp::Zstd { level: 0 }), Some(bound)).unwrap();
+            NewWriter::new(dir.path(), stem, Some(Comp::Zstd { level: 0 }), Some(bound)).unwrap();
 
         let data = vec!["test\n", "1\n", "2\n", "data\n", ":)\n"];
         let expected = vec!["test\n", "1\n2\n", "data\n", ":)\n"];

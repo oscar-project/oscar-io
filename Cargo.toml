@@ -1,6 +1,6 @@
 [package]
 name = "oscar-io"
-version = "0.3.1"
+version = "0.4.0"
 edition = "2021"
 description = "Readers/Writers for OSCAR Corpora."
 documentation = "https://docs.rs/oscar-io"
